@@ -1,1 +1,60 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
 
+# 1. Load the dataset
+# Assuming 'bank.csv' is in your directory
+df = pd.read_csv('bank.csv', sep=';') 
+
+# 2. Separate Features and Target
+X = df.drop('y', axis=1)
+y = df['y'].apply(lambda x: 1 if x == 'yes' else 0) # Convert target to binary
+
+# 3. Identify Column Types
+numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
+categorical_features = X.select_dtypes(include=['object']).columns
+
+# 4. Preprocessing Pipeline
+# We scale numbers and one-hot encode categories
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', StandardScaler(), numeric_features),
+        ('cat', OneHotEncoder(drop='first'), categorical_features)
+    ])
+
+# 5. Split Data (80% Train, 20% Test)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 6. Apply Preprocessing and Train Model
+# Logistic Regression with 'balanced' weights helps if subscribers are rare
+X_train_processed = preprocessor.fit_transform(X_train)
+X_test_processed = preprocessor.transform(X_test)
+
+model = LogisticRegression(max_iter=1000, class_weight='balanced')
+model.fit(X_train_processed, y_train)
+
+# 7. Predictions
+y_pred = model.predict(X_test_processed)
+y_prob = model.predict_proba(X_test_processed)[:, 1]
+
+# 8. Evaluation
+print("--- Confusion Matrix ---")
+print(confusion_matrix(y_test, y_pred))
+
+print("\n--- Classification Report ---")
+print(classification_report(y_test, y_pred))
+
+print(f"\nROC-AUC Score: {roc_auc_score(y_test, y_prob):.2f}")
+
+# 9. Feature Importance (Optional)
+# Get feature names after one-hot encoding
+cat_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
+feature_names = np.concatenate([numeric_features, cat_names])
+importance = pd.Series(model.coef_[0], index=feature_names).sort_values(ascending=False)
+
+print("\n--- Top 5 Positive Predictors ---")
+print(importance.head(5))
